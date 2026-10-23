@@ -3,34 +3,28 @@ name: Build Flutter APK
 on:
   workflow_dispatch:
     inputs:
-      zip_url:
-        description: 'URL ZIP dari bot'
+      jobId:
+        description: 'Job ID dari bot'
         required: true
         type: string
+      userId:
+        description: 'User ID Telegram'
+        required: true
+        type: string
+      payload:
+        description: 'Payload data build'
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Download ZIP
-        run: |
-          # Download dari URL yang dikirim bot
-          wget "${{ github.event.inputs.zip_url }}" -O project.zip
-          
-      - name: Unzip Project
-        run: |
-          mkdir -p my_app
-          unzip -q project.zip -d my_app
-          
-          # Pindahin isi folder kalau ternyata di dalamnya ada folder lagi
-          if [ -d "my_app/New-main" ]; then
-            mv my_app/New-main/* my_app/
-            rm -rf my_app/New-main
-          fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -41,16 +35,50 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.35.x'
           channel: 'stable'
+          cache: true
+
+      - name: Extract ZIP
+        run: |
+          unzip -q project.zip -d my_app
+
+      - name: Find pubspec.yaml
+        id: detect
+        run: |
+          PUBSPEC=$(find my_app -name "pubspec.yaml" -type f | head -1)
+          if [ -z "$PUBSPEC" ]; then
+            echo "❌ pubspec.yaml tidak ditemukan"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$PUBSPEC")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "✅ Project dir: $PROJECT_DIR"
+
+      - name: Pin font_awesome_flutter version
+        run: |
+          cd $PROJECT_DIR
+          sed -i 's|font_awesome_flutter:.*|font_awesome_flutter: 10.10.0|g' pubspec.yaml
+
+      - name: Get Dependencies
+        run: |
+          cd $PROJECT_DIR
+          flutter pub get
 
       - name: Build APK
-        working-directory: ./my_app
         run: |
-          flutter pub get
-          flutter build apk --release
+          cd $PROJECT_DIR
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Find APK
+        run: |
+          echo "=== SEMUA FILE APK ==="
+          find my_app -name "*.apk" -type f -exec ls -lh {} \;
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: my_app/build/app/outputs/flutter-apk/app-release.apk
+          name: build-apk-release
+          path: my_app/**/*.apk
+          if-no-files-found: error
+          retention-days: 1
