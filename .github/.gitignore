@@ -1,0 +1,14 @@
+# Abaikan file ZIP yang di-upload dari aplikasi
+project.zip
+*.zip
+
+# Abaikan folder hasil extract sementara
+my_app/
+
+# Abaikan file sistem / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Abaikan file konfigurasi environment
+.env
