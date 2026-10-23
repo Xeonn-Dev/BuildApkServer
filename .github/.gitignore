@@ -1,14 +1,38 @@
-# Abaikan file ZIP yang di-upload dari aplikasi
-project.zip
-*.zip
+# ─── Build Server Repo (Xeonn-Dev/BuildApkServer) ───
 
-# Abaikan folder hasil extract sementara
+# Hasil extract dari project.zip (biar nggak double-track)
 my_app/
+app/
+build/
+.dart_tool/
+.gradle/
+node_modules/
 
-# Abaikan file sistem / editor
+# File temporary & cache
+*.log
+*.tmp
+*.cache
+.gradle-cache/
+
+# File sementara Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+*.iml
+.idea/
+.vscode/
+
+# OS files
 .DS_Store
 Thumbs.db
-*.log
+desktop.ini
 
-# Abaikan file konfigurasi environment
-.env
+# File ZIP lain (selain project.zip)
+*.zip
+!project.zip
+
+# Jangan ignore file penting
+!.github/
+!pubspec.yaml
