@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       jobId:
-        required: true
+        required: false
         type: string
       userId:
-        required: true
+        required: false
         type: string
       payload:
         required: false
@@ -22,22 +22,62 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # ✅ AUTO-DETECT ZIP: cari file ZIP apa pun di repo
-      - name: Find & Rename ZIP
+      # 🔍 STEP 1: DEBUG — Liat apa yang dikirim bot
+      - name: Debug Info
         run: |
-          echo "=== ISI ROOT REPO ==="
-          ls -la
+          echo "=== JOB ID ==="
+          echo "${{ github.event.inputs.jobId }}"
+          echo "=== USER ID ==="
+          echo "${{ github.event.inputs.userId }}"
+          echo "=== PAYLOAD (200 chars) ==="
+          echo "${{ github.event.inputs.payload }}" | head -c 200
           echo ""
-          echo "=== CARI FILE ZIP ==="
-          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" -type f ! -path "*/node_modules/*" | head -1)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "❌ Tidak ada file ZIP di repo!"
+          echo "=== ISI REPO ==="
+          ls -la
+          echo "=== SEMUA FILE (non-git) ==="
+          find . -type f -not -path "./.git/*" | head -30
+          echo "=== GIT LOG ==="
+          git log --oneline -5
+
+      # 📦 STEP 2: Dapetin ZIP dari berbagai sumber
+      - name: Acquire ZIP
+        run: |
+          PAYLOAD="${{ github.event.inputs.payload }}"
+          FOUND=false
+
+          # Strategi 1: Payload adalah URL
+          if [[ "$PAYLOAD" == http* ]]; then
+            echo "🔗 Payload adalah URL, download..."
+            wget -q "$PAYLOAD" -O project.zip && [ -s project.zip ] && FOUND=true
+          fi
+
+          # Strategi 2: Cari ZIP di repo
+          if [ "$FOUND" = "false" ]; then
+            echo "🔍 Cari ZIP di repo..."
+            ZIP_FILE=$(find . -maxdepth 3 -name "*.zip" -type f ! -path "*/node_modules/*" | head -1)
+            if [ ! -z "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+              cp "$ZIP_FILE" project.zip
+              FOUND=true
+            fi
+          fi
+
+          # Strategi 3: Payload base64
+          if [ "$FOUND" = "false" ] && [ ! -z "$PAYLOAD" ] && [ ${#PAYLOAD} -gt 100 ]; then
+            echo "🔍 Coba decode base64..."
+            echo "$PAYLOAD" | base64 -d > project.zip 2>/dev/null || true
+            [ -s project.zip ] && file project.zip | grep -qi "zip" && FOUND=true
+          fi
+
+          if [ "$FOUND" = "false" ]; then
+            echo "❌ GAGAL: ZIP tidak ditemukan di mana pun!"
+            echo "Panjang payload: ${#PAYLOAD}"
             exit 1
           fi
-          echo "✅ ZIP ditemukan: $ZIP_FILE"
-          # Rename jadi project.zip biar seragam
-          cp "$ZIP_FILE" project.zip
+
+          echo "✅ project.zip siap"
           ls -lh project.zip
 
       - name: Setup Java
@@ -64,14 +104,15 @@ jobs:
         run: |
           PUBSPEC=$(find my_app -name "pubspec.yaml" -type f | head -1)
           if [ -z "$PUBSPEC" ]; then
-            echo "❌ pubspec.yaml tidak ditemukan di dalam ZIP"
+            echo "❌ pubspec.yaml tidak ditemukan"
+            find my_app -type f | head -30
             exit 1
           fi
           PROJECT_DIR=$(dirname "$PUBSPEC")
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           echo "✅ Project dir: $PROJECT_DIR"
 
-      - name: Pin font_awesome_flutter version
+      - name: Pin font_awesome_flutter
         run: |
           cd $PROJECT_DIR
           sed -i 's|font_awesome_flutter:.*|font_awesome_flutter: 10.10.0|g' pubspec.yaml
@@ -87,9 +128,7 @@ jobs:
           flutter build apk --release --no-tree-shake-icons
 
       - name: Find APK
-        run: |
-          echo "=== SEMUA FILE APK ==="
-          find my_app -name "*.apk" -type f -exec ls -lh {} \;
+        run: find my_app -name "*.apk" -type f -exec ls -lh {} \;
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
